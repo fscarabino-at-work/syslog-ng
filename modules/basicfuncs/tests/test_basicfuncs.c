@@ -327,6 +327,8 @@ test_list_funcs(void)
 
   assert_template_format("$(list-nth 1 '\"foo,\",\"bar\",\"baz\"')", "bar");
   assert_template_format("$(list-nth 2 '\"foo,\",\"bar\",\"baz\"')", "baz");
+  assert_template_format("$(list-nth -1 '\"foo,\",\"bar\",\"baz\"')", "baz");
+  assert_template_format("$(list-nth -2 '\"foo,\",\"bar\",\"baz\"')", "bar");
 
   assert_template_format("$(list-tail)", "");
   assert_template_format("$(list-tail foo)", "");

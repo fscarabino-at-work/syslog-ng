@@ -140,6 +140,19 @@ _list_slice(gint argc, GString *argv[], GString *result,
 }
 
 static void
+_adjust_list_index(gint argc, GString *argv[],
+                   gint *ndx)
+{
+  gint count = -1;
+
+  if (*ndx < 0)
+    count = _list_count(argc, argv);
+
+  if (*ndx < 0)
+    *ndx += count;
+}
+
+static void
 _list_nth(gint argc, GString *argv[], GString *result, gint ndx)
 {
   ListScanner scanner;
@@ -150,6 +163,8 @@ _list_nth(gint argc, GString *argv[], GString *result, gint ndx)
 
   list_scanner_init(&scanner);
   list_scanner_input_gstring_array(&scanner, argc, argv);
+
+  _adjust_list_index(argc, argv, &ndx);
 
   i = 0;
   while (i < ndx && list_scanner_scan_next(&scanner))
