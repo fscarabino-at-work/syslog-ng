@@ -127,9 +127,7 @@ geoip_parser_process(LogParser *s, LogMessage **pmsg,
   GeoIPParser *self = (GeoIPParser *) s;
   LogMessage *msg = log_msg_make_writable(pmsg, path_options);
 
-  if (!self->dest.country_code &&
-      !self->dest.latitude &&
-      !self->dest.longitude)
+  if (!self->add_geoip_result)
     return TRUE;
 
   self->add_geoip_result(self, msg, input);
