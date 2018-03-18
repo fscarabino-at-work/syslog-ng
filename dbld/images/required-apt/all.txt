@@ -31,11 +31,11 @@ tzdata
 # required for make
 make
 
+# python stuff
+virtualenv
+
 # required for make check
 libxml2-utils
-pylint
-python-nose
-python-ply
 
 # other tools
 gdb
