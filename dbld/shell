@@ -8,4 +8,4 @@ echo -e "\t\$ /source/configure"
 echo -e "\t\$ make"
 echo -e "\tIf configure is not yet available, run autogen.sh in the source dir"
 cd /source
-exec bash
+HISTFILE=/build/.bash_history exec bash
