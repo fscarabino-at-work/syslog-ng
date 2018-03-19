@@ -24,6 +24,8 @@
 #include "python-main.h"
 #include "python-module.h"
 #include "python-helpers.h"
+#include "python-global-code-loader.h"
+#include "cfg.h"
 #include "messages.h"
 
 /*
@@ -125,30 +127,45 @@ _py_get_main_module(PythonConfig *pc)
   return pc->main_module;
 }
 
-gboolean
-_py_evaluate_global_code(PythonConfig *pc, const gchar *code)
+PyObject *
+_py_compile_code(const gchar *filename, const gchar *code)
 {
-  PyObject *result;
+  return Py_CompileString((char *) code, filename, Py_file_input);
+}
+
+gboolean
+_py_evaluate_global_code(PythonConfig *pc, const gchar *filename, const gchar *code)
+{
   PyObject *module;
   PyObject *dict;
+  PyObject *code_object;
+  gchar buf[256];
 
   module = _py_get_main_module(pc);
   if (!module)
     return FALSE;
 
   dict = PyModule_GetDict(module);
-  result = PyRun_String(code, Py_file_input, dict, dict);
+  PyDict_SetItemString(dict, "__loader__", py_global_code_loader_new(code));
 
-  if (!result)
+  code_object = _py_compile_code(filename, code);
+  if (!code_object)
     {
-      gchar buf[256];
+      msg_error("Error compiling Python global code block",
+                evt_tag_str("exception", _py_format_exception_text(buf, sizeof(buf))));
+      _py_finish_exception_handling();
+      return FALSE;
+    }
+  module = PyImport_ExecCodeModuleEx("_syslogng", code_object, (char *) filename);
+  Py_DECREF(code_object);
 
+  if (!module)
+    {
       msg_error("Error evaluating global Python block",
                 evt_tag_str("exception", _py_format_exception_text(buf, sizeof(buf))));
       _py_finish_exception_handling();
       return FALSE;
     }
-  Py_XDECREF(result);
   return TRUE;
 }
 
@@ -156,11 +173,13 @@ gboolean
 python_evaluate_global_code(GlobalConfig *cfg, const gchar *code)
 {
   PyGILState_STATE gstate;
+  gchar buf[256];
   PythonConfig *pc = python_config_get(cfg);
   gboolean result;
 
   gstate = PyGILState_Ensure();
-  result = _py_evaluate_global_code(pc, code);
+  g_snprintf(buf, sizeof(buf), "%s/global-code", cfg->filename);
+  result = _py_evaluate_global_code(pc, buf, code);
   PyGILState_Release(gstate);
 
   return result;
