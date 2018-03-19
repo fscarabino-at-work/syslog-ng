@@ -186,23 +186,41 @@ CfgParser main_parser =
 
 CFG_PARSER_IMPLEMENT_LEXER_BINDING(main_, gpointer *)
 
-static void
-_underline_source(YYLTYPE *yylloc, gchar *buf)
-{
-  gint i;
+/* display CONTEXT lines before and after the offending line */
+#define CONTEXT 5
 
-  if (buf[0])
+static void
+_underline_source(YYLTYPE *yylloc, gchar **lines, gint error_index)
+{
+  const gchar *buf;
+  gint line;
+
+  fprintf(stderr, "\n");
+  for (line = 0; lines[line] && line < error_index + CONTEXT + 1; line++)
     {
-      fprintf(stderr, "\n%s", buf);
+      buf = lines[line];
+
+      if (line == error_index)
+        fprintf(stderr, "%-8s", "-->");
+      else
+        fprintf(stderr, "%-8d", yylloc->first_line + line - error_index);
+
+      fprintf(stderr, "%s", buf);
       if (buf[strlen(buf) - 1] != '\n')
         fprintf(stderr, "\n");
-      for (i = 0; buf[i] && i < yylloc->first_column - 1; i++)
+
+      if (line == error_index)
         {
-          fprintf(stderr, "%c", buf[i] == '\t' ? '\t' : ' ');
+          /* do the underline */
+          fprintf(stderr, "%-8s", "");
+          for (gint i = 0; buf[i] && i < yylloc->first_column - 1; i++)
+            {
+              fprintf(stderr, "%c", buf[i] == '\t' ? '\t' : ' ');
+            }
+          for (gint i = yylloc->first_column; (i == yylloc->first_column) || (i < yylloc->last_column); i++)
+            fprintf(stderr, "^");
+          fprintf(stderr, "\n");
         }
-      for (i = yylloc->first_column; (i == yylloc->first_column) || (i < yylloc->last_column); i++)
-        fprintf(stderr, "^");
-      fprintf(stderr, "\n");
     }
 }
 
@@ -210,44 +228,58 @@ static void
 _report_file_location(const gchar *filename, YYLTYPE *yylloc)
 {
   FILE *f;
-  gint lineno = 1;
+  gint lineno = 0;
   gchar buf[1024];
+  GPtrArray *context = g_ptr_array_new();
+  gint error_index = 0;
 
   f = fopen(filename, "r");
   if (f)
     {
-      while (fgets(buf, sizeof(buf), f) && lineno < yylloc->first_line)
-        lineno++;
-      if (lineno != yylloc->first_line)
-        buf[0] = 0;
+      while (fgets(buf, sizeof(buf), f) && lineno < (gint) yylloc->first_line + CONTEXT)
+        {
+          lineno++;
+          if (lineno > (gint) yylloc->first_line + CONTEXT)
+            break;
+          else if (lineno < (gint) yylloc->first_line - CONTEXT)
+            continue;
+          else if (lineno == yylloc->first_line)
+            error_index = context->len;
+          g_ptr_array_add(context, g_strdup(buf));
+        }
+      /* NOTE: do we have the appropriate number of lines? */
+      if (lineno <= yylloc->first_line)
+        goto exit;
+      g_ptr_array_add(context, NULL);
       fclose(f);
     }
-  _underline_source(yylloc, buf);
+  _underline_source(yylloc, (gchar **) context->pdata, error_index);
+
+ exit:
+  g_ptr_array_foreach(context, (GFunc) g_free, NULL);
+  g_ptr_array_free(context, TRUE);
 }
 
 static void
 _report_buffer_location(const gchar *buffer_content, YYLTYPE *yylloc)
 {
-  const gchar *sol, *eol;
-  gchar buf[1024];
-  gint lineno = 1;
+  gchar **lines = g_strsplit(buffer_content, "\n", yylloc->first_line + CONTEXT + 1);
+  gint num_lines = g_strv_length(lines);
 
-  sol = buffer_content;
-  eol = strchr(sol, '\n');
-  while (eol && lineno < yylloc->first_line)
-    {
-      lineno++;
-      sol = eol + 1;
-      eol = strchr(sol, '\n');
-    }
-  if (lineno == yylloc->first_line)
-    {
-      gsize cs = MIN(eol ? eol - sol - 1 : strlen(sol), sizeof(buf) - 2);
+  if (num_lines <= yylloc->first_line)
+    goto exit;
 
-      memcpy(buf, sol, cs);
-      buf[cs] = 0;
+  gint start = yylloc->first_line - 1 - CONTEXT;
+  gint error_index = CONTEXT;
+  if (start < 0)
+    {
+      error_index += start;
+      start = 0;
     }
-  _underline_source(yylloc, buf);
+  _underline_source(yylloc, &lines[start], error_index);
+
+ exit:
+  g_strfreev(lines);
 }
 
 void
@@ -278,7 +310,7 @@ report_syntax_error(CfgLexer *lexer, YYLTYPE *yylloc, const char *what, const ch
     }
   else if (level->include_type == CFGI_BUFFER)
     {
-      _report_buffer_location(level->buffer.content, yylloc);
+      _report_buffer_location(level->buffer.original_content, yylloc);
     }
 
   fprintf(stderr, "\nsyslog-ng documentation: https://www.balabit.com/support/documentation?product=%s\n"
