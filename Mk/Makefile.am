@@ -1,4 +1,4 @@
-PYTHON_VENV_DIR = $(abs_builddir)/.venv
+PYTHON_VENV_DIR = $(shell cd $(builddir) && pwd)/.venv
 
 # can be used to reference to the Python interpreter, preferred from our
 # virtualenv should one be present.  The $(PYTHON) variable always
